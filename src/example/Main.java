@@ -5,13 +5,7 @@ import java.net.InetSocketAddress;
 import java.util.Arrays;
 import java.util.LinkedList;
 
-/* ClassFileServer.java -- a simple file server that can server
- * Http get request in both clear and secure channel
- *
- * The ClassFileServer implements a ClassServer that
- * reads files from the file system. See the
- * doc for the "Main" method for how to run this
- * server.
+/* Main file which processes arguments and stuff. 
  */
 
 public class Main {
