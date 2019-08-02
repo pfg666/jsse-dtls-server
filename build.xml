@@ -1,0 +1,18 @@
+<project name="jsse-dtls-testserver" default="dist" basedir=".">
+    <property name="src" location="src" />
+    <property name="build" location="bin" />
+    <target name="init">
+        <tstamp />
+        <mkdir dir="${build}"/>
+    </target>
+    <target name="compile" depends="init" description="compile the source">
+        <javac srcdir="${src}" destdir="${build}"/>
+    </target>
+    <target name="dist" depends="compile" description="generate distro">
+        <jar destfile="jsse-dtls-testserver.jar" basedir="${build}">
+	        <manifest>
+              		<attribute name="Main-Class" value="example.Main"/>
+	        </manifest>
+        </jar>
+    </target>
+</project>
