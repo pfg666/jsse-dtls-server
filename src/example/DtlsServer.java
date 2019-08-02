@@ -32,6 +32,7 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
+import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.nio.ByteBuffer;
 import java.security.KeyStore;
@@ -52,7 +53,7 @@ import javax.net.ssl.TrustManagerFactory;
 /**
  * A basic DTLS echo server built around JSSE's SSLEngine. 
  */
-public class DtlsServer {
+public class DtlsServer extends Thread{
 
 	private static int LOG_LEVEL = 1; // 0 no logging, 1 basic logging, 2 logging incl. method name
 	{
@@ -60,9 +61,8 @@ public class DtlsServer {
 		if (level != null)
 			LOG_LEVEL = Integer.valueOf(level);
 	}
-	private static final int MAX_HANDSHAKE_LOOPS = 200;
-	private static final int MAX_APP_READ_LOOPS = 60;
 	private static final int BUFFER_SIZE = 20240;
+	private static final int SOCKET_TIMEOUT = 20000;
 
 	/*
 	 * The following is to set up the keystores.
@@ -74,26 +74,34 @@ public class DtlsServer {
 
 	private InetSocketAddress peerAddr;
 	private SSLContext currentContext;
+	private DatagramSocket socket;
+	private DtlsServerConfig config;
+	
+	public DtlsServer(DtlsServerConfig config) throws SocketException {
+		InetSocketAddress address = new InetSocketAddress(config.getHostname(), config.getPort());
+		socket = new DatagramSocket(address);
+		socket.setSoTimeout(SOCKET_TIMEOUT);
+		socket.setReuseAddress(true);
+		this.config = config;
+	}
 
 	/*
 	 * A mock DTLS echo server which uses SSLEngine.
 	 */
-	void runServer(DatagramSocket socket, InetSocketAddress clientSocketAddr, ClientAuth auth,
-			boolean withSessionResumption) throws Exception {
-		peerAddr = clientSocketAddr;
-
+	public void run() {
+		try {
 		// create SSLEngine
-		SSLEngine engine = createSSLEngine(false, auth, false);
+		SSLEngine engine = createSSLEngine(false, config.getAuth(), false);
 
 		ByteBuffer appData = null;
 		doFullHandshake(engine, socket);
 		// read server application data
-		while (true) {
+		while (!isInterrupted()) {
 			// ok, the engine is closed, if resumption was enabled we create a new engine,
 			// otherwise we exit.
 			if (isEngineClosed(engine) ) {
-				if (withSessionResumption) {
-					engine = createSSLEngine(false, auth, withSessionResumption);
+				if (config.isResumptionEnabled()) {
+					engine = createSSLEngine(false, config.getAuth(), config.isResumptionEnabled());
 					doFullHandshake(engine, socket);
 				} else 
 					break;
@@ -111,6 +119,18 @@ public class DtlsServer {
 					}
 				}
 			}
+			
+			Thread.sleep(10);
+		}
+		} catch (Exception E) {
+			severe(E.getMessage());
+			E.printStackTrace(System.err);
+		} finally {
+			if (isInterrupted()) {
+				info("Server thread has been interrupted");
+			}
+			socket.close();
+			socket.disconnect();
 		}
 	}
 
@@ -147,6 +167,12 @@ public class DtlsServer {
 
 		return engine;
 	}
+	
+	public void interrupt() {
+		this.socket.close();
+		this.socket.disconnect();
+		super.interrupt();
+	}
 
 	/*
 	 * Executes a full handshake, may or may not succeed.
@@ -172,14 +198,8 @@ public class DtlsServer {
 	private void doFullHandshake(SSLEngine engine, DatagramSocket socket) throws Exception {
 
 		boolean isDone = false;
-		int loops = MAX_HANDSHAKE_LOOPS;
 		engine.beginHandshake();
-		while (!isDone && !isEngineClosed(engine)) {
-
-			if (--loops < 0) {
-				throw new RuntimeException("Exhausted the maximum number of loops allowed");
-			}
-			
+		while (!isDone && !isEngineClosed(engine) && !isInterrupted()) {
 			isDone = doHandshakeStepCatchExceptions(engine, socket);
 		}
 		
@@ -309,23 +329,18 @@ public class DtlsServer {
 	}
 
 	private ByteBuffer receiveAppData(SSLEngine engine, DatagramSocket socket) throws Exception {
-		int loops = MAX_APP_READ_LOOPS;
-		while (true) {
-			if (--loops < 0) {
-				throw new RuntimeException("Too many loops to receive application data");
-			}
-
+		while (!isInterrupted()) {
 			byte[] buf = new byte[BUFFER_SIZE];
 			DatagramPacket packet = new DatagramPacket(buf, buf.length);
 			info("waiting for a packet");
 			try {
 				receivePacket(packet, socket);
-				info("received a packet of length " + packet.getLength());
-			} catch (SocketTimeoutException e) {
+			} catch (Exception e) {
 				severe(e.getMessage());
-				continue;
+				return null;
 			}
-
+			
+			info("received a packet of length " + packet.getLength());
 			ByteBuffer netBuffer = ByteBuffer.wrap(buf, 0, packet.getLength());
 			ByteBuffer recBuffer = ByteBuffer.allocate(BUFFER_SIZE);
 			SSLEngineResult rs = engine.unwrap(netBuffer, recBuffer);
@@ -341,6 +356,8 @@ public class DtlsServer {
 				return null;
 			}
 		}
+		
+		return null;
 	}
 
 	// receive packet and update peer address while you are at it
@@ -357,12 +374,7 @@ public class DtlsServer {
 	private void produceHandshakePackets(SSLEngine engine, SocketAddress socketAddr, List<DatagramPacket> packets)
 			throws Exception {
 
-		int loops = MAX_HANDSHAKE_LOOPS;
 		while (engine.getHandshakeStatus() == HandshakeStatus.NEED_WRAP) {
-
-			if (--loops < 0) {
-				throw new RuntimeException("Too many loops to produce handshake packets");
-			}
 
 			ByteBuffer oNet = ByteBuffer.allocate(32768);
 			ByteBuffer oApp = ByteBuffer.allocate(0);
@@ -492,14 +504,6 @@ public class DtlsServer {
 			} else {
 				ps.println(message);
 			}
-		}
-	}
-
-	static void sleep(long millis) {
-		try {
-			Thread.sleep(millis);
-		} catch (InterruptedException e) {
-			throw new RuntimeException(e);
 		}
 	}
 

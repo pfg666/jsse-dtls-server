@@ -1,7 +1,6 @@
 package example;
 
-import java.net.DatagramSocket;
-import java.net.InetSocketAddress;
+import java.net.SocketException;
 import java.util.Arrays;
 import java.util.LinkedList;
 
@@ -9,28 +8,26 @@ import java.util.LinkedList;
  */
 
 public class Main {
-	
-	private static int SOCKET_TIMEOUT = 100000;
-    
-    /**
-     * Creates an echo DTLS server. 
+
+	/**
+     * Creates an echo DTLS server.
+     *  
      * Accepts the following arguments:
      * <ul>
      * 	<li> the port on which the server accepts; </li>   
      * 	<li> whether client authentication is wanted/needed/disabled (optional); </li> 
-     *  <li> session resumption enabled-ness (optional). </li>
+     *  <li> session resumption enabled-ness (optional); </li>
+     *  <li> the port for the ThreadStarter launching the DTLS server, otherwise 
+     *  the server is launched once directly. </li>
      * </ul>
      * 
-     * The socket timeout is set to a very high value on purpose. 
-     * The DTLS server does not do anything on a timeout anyway.
      */
     public static void main(String args[])
     {
-    	ClientAuth defAuth = ClientAuth.DISABLED;
     	boolean defSr = false;
     	if (args.length ==0) {
 	        System.out.println(
-	            "USAGE: java DtlsTestServer port [NEEDED|WANTED|DISABLED [resumption_enabled]]");
+	            "USAGE: java Main port [NEEDED|WANTED|DISABLED [resumption_enabled [starter_port]]]");
 	        System.out.println("Default client auth is " + ClientAuth.DISABLED.name());
 	        System.out.println("Default sr enabled-mess is " + defSr);
 	        return;
@@ -38,30 +35,47 @@ public class Main {
     	
     	LinkedList<String> argList = new LinkedList<String>();
     	argList.addAll(Arrays.asList(args));
+    	DtlsServerConfig config = new DtlsServerConfig();
 
         int port = Integer.parseInt(argList.removeFirst());
+        Integer threadStarterPort = null;
+        config.setPort(port);
 
         try {
-        	ClientAuth auth = defAuth;
         	if (!argList.isEmpty()) {
         		String authString = argList.removeFirst();
-            	auth = ClientAuth.valueOf(authString);
+            	config.setAuth(ClientAuth.valueOf(authString));
             }
-        	boolean enabledSr = defSr;
         	if (!argList.isEmpty()) {
         		String srString = argList.removeFirst();
-        		enabledSr = Boolean.valueOf(srString);
+        		config.setEnableResumption(Boolean.valueOf(srString));
+        	}
+        	if (!argList.isEmpty()) {
+        		String tsString = argList.removeFirst();
+        		threadStarterPort = Integer.valueOf(tsString);
         	}
             
-        	DtlsServer dtlsHarness = new DtlsServer();
-        	InetSocketAddress address = new InetSocketAddress("localhost", port);
-        	DatagramSocket socket = new DatagramSocket(address);
-        	socket.setSoTimeout(SOCKET_TIMEOUT);
-        	dtlsHarness.runServer(socket, null, auth, enabledSr);
+        	if (threadStarterPort == null) {
+	        	DtlsServer dtlsHarness = new DtlsServer(config);
+	        	dtlsHarness.run();
+        	} else {
+        		ThreadStarter ts = new ThreadStarter(() -> newServer(config), threadStarterPort);
+        		ts.run();
+        	}
+        	
         } catch (Exception e) {
             System.out.println("Got Exception: " +
                                e.getMessage());
             e.printStackTrace();
         } 
-    }    
+    }
+
+	private static DtlsServer newServer(DtlsServerConfig config) {
+		try {
+			return new DtlsServer(config);
+		} catch (SocketException e) {
+			e.printStackTrace();
+			return null;
+		}
+	}
 }
