@@ -89,9 +89,14 @@ public class DtlsServer {
 		doFullHandshake(engine, socket);
 		// read server application data
 		while (true) {
-			if (isEngineClosed(engine)) {
-				engine = createSSLEngine(false, auth, withSessionResumption);
-				doFullHandshake(engine, socket);
+			// ok, the engine is closed, if resumption was enabled we create a new engine,
+			// otherwise we exit.
+			if (isEngineClosed(engine) ) {
+				if (withSessionResumption) {
+					engine = createSSLEngine(false, auth, withSessionResumption);
+					doFullHandshake(engine, socket);
+				} else 
+					break;
 			} else {
 				if (engine.getHandshakeStatus() != HandshakeStatus.NOT_HANDSHAKING) {
 					doHandshakeStepCatchExceptions(engine, socket);
@@ -169,7 +174,7 @@ public class DtlsServer {
 		boolean isDone = false;
 		int loops = MAX_HANDSHAKE_LOOPS;
 		engine.beginHandshake();
-		while (!isDone) {
+		while (!isDone && !isEngineClosed(engine)) {
 
 			if (--loops < 0) {
 				throw new RuntimeException("Exhausted the maximum number of loops allowed");
@@ -177,27 +182,29 @@ public class DtlsServer {
 			
 			isDone = doHandshakeStepCatchExceptions(engine, socket);
 		}
-
-		SSLEngineResult.HandshakeStatus hs = engine.getHandshakeStatus();
-		info("Handshake finished, status is " + hs);
-
-		if (engine.getHandshakeSession() != null) {
-			throw new Exception("Handshake finished, but handshake session is not null");
-		}
-
-		SSLSession session = engine.getSession();
-		if (session == null) {
-			throw new Exception("Handshake finished, but session is null");
-		}
-		info("Negotiated protocol is " + session.getProtocol());
-		info("Negotiated cipher suite is " + session.getCipherSuite());
-
-		// handshake status should be NOT_HANDSHAKING
-		//
-		// according to the spec,
-		// SSLEngine.getHandshakeStatus() can't return FINISHED
-		if (hs != SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING) {
-			throw new Exception("Unexpected handshake status " + hs);
+		
+		if (isDone) {
+			SSLEngineResult.HandshakeStatus hs = engine.getHandshakeStatus();
+			info("Handshake finished, status is " + hs);
+	
+			if (engine.getHandshakeSession() != null) {
+				throw new Exception("Handshake finished, but handshake session is not null");
+			}
+	
+			SSLSession session = engine.getSession();
+			if (session == null) {
+				throw new Exception("Handshake finished, but session is null");
+			}
+			info("Negotiated protocol is " + session.getProtocol());
+			info("Negotiated cipher suite is " + session.getCipherSuite());
+	
+			// handshake status should be NOT_HANDSHAKING
+			//
+			// according to the spec,
+			// SSLEngine.getHandshakeStatus() can't return FINISHED
+			if (hs != SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING) {
+				throw new Exception("Unexpected handshake status " + hs);
+			}
 		}
 	}
 	
@@ -460,9 +467,11 @@ public class DtlsServer {
 		tmf.init(ts);
 
 		SSLContext sslCtx = SSLContext.getInstance("DTLS");
+		System.err.println(sslCtx.getProvider());
 
 		sslCtx.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
-
+		System.err.println(Arrays.asList(sslCtx.getDefaultSSLParameters().getCipherSuites()));
+		
 		return sslCtx;
 	}
 
