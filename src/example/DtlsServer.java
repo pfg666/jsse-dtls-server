@@ -46,14 +46,14 @@ import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLEngineResult;
 import javax.net.ssl.SSLEngineResult.HandshakeStatus;
 import javax.net.ssl.SSLEngineResult.Status;
+import javax.net.ssl.SSLParameters;
 import javax.net.ssl.SSLSession;
 import javax.net.ssl.TrustManagerFactory;
 
-
 /**
- * A basic DTLS echo server built around JSSE's SSLEngine. 
+ * A basic DTLS echo server built around JSSE's SSLEngine.
  */
-public class DtlsServer extends Thread{
+public class DtlsServer extends Thread {
 
 	private static int LOG_LEVEL = 1; // 0 no logging, 1 basic logging, 2 logging incl. method name
 	{
@@ -76,7 +76,7 @@ public class DtlsServer extends Thread{
 	private SSLContext currentContext;
 	private DatagramSocket socket;
 	private DtlsServerConfig config;
-	
+
 	public DtlsServer(DtlsServerConfig config) throws SocketException {
 		InetSocketAddress address = new InetSocketAddress(config.getHostname(), config.getPort());
 		socket = new DatagramSocket(address);
@@ -90,38 +90,73 @@ public class DtlsServer extends Thread{
 	 */
 	public void run() {
 		try {
-		// create SSLEngine
-		SSLEngine engine = createSSLEngine(false, config.getAuth(), false);
+			// create SSLEngine
+			SSLEngine engine = createSSLEngine(false, config);
 
-		ByteBuffer appData = null;
-		doFullHandshake(engine, socket);
-		// read server application data
-		while (!isInterrupted()) {
-			// ok, the engine is closed, if resumption was enabled we create a new engine,
-			// otherwise we exit.
-			if (isEngineClosed(engine) ) {
-				if (config.isResumptionEnabled()) {
-					engine = createSSLEngine(false, config.getAuth(), config.isResumptionEnabled());
-					doFullHandshake(engine, socket);
-				} else 
-					break;
-			} else {
-				if (engine.getHandshakeStatus() != HandshakeStatus.NOT_HANDSHAKING) {
-					doHandshakeStepCatchExceptions(engine, socket);
-				} else {
-					appData = receiveAppData(engine, socket);
-
-					if (appData != null) {
-						info("Server received application data");
-
-						// write server application data
-						sendAppData(engine, socket, appData.duplicate(), peerAddr, "Server");
+			ByteBuffer appData = null;
+			doFullHandshake(engine, socket);
+			switch (config.getOperation()) {
+			case BASIC:
+				// basic mode, nothing more needs to be done
+				break;
+			case ONE_ECHO:
+				if (!isInterrupted() && !isEngineClosed(engine)) {
+					if (engine.getHandshakeStatus() != HandshakeStatus.NOT_HANDSHAKING) {
+						appData = receiveAppData(engine, socket);
+		
+						if (appData != null) {
+							info("Server received application data");
+		
+							// write server application data
+							sendAppData(engine, socket, appData.duplicate(), peerAddr, "Server");
+						}
 					}
 				}
+				break;
+			case FULL:
+				while (!isInterrupted() && !isEngineClosed(engine)) {
+					if (engine.getHandshakeStatus() != HandshakeStatus.NOT_HANDSHAKING) {
+						doHandshakeStepCatchExceptions(engine, socket);
+					} else {
+						appData = receiveAppData(engine, socket);
+
+						if (appData != null) {
+							info("Server received application data");
+
+							// write server application data
+							sendAppData(engine, socket, appData.duplicate(), peerAddr, "Server");
+						}
+					}
+				}
+			case FULL_SR:
+				// read server application data
+				while (!isInterrupted()) {
+					// ok, the engine is closed, if resumption was enabled we create a new engine,
+					// otherwise we exit.
+					if (isEngineClosed(engine)) {
+						if (config.isResumptionEnabled()) {
+							engine = createSSLEngine(false, config);
+							doFullHandshake(engine, socket);
+						} else
+							break;
+					} else {
+						if (engine.getHandshakeStatus() != HandshakeStatus.NOT_HANDSHAKING) {
+							doHandshakeStepCatchExceptions(engine, socket);
+						} else {
+							appData = receiveAppData(engine, socket);
+
+							if (appData != null) {
+								info("Server received application data");
+
+								// write server application data
+								sendAppData(engine, socket, appData.duplicate(), peerAddr, "Server");
+							}
+						}
+					}
+
+				}
+				break;
 			}
-			
-			Thread.sleep(10);
-		}
 		} catch (Exception E) {
 			severe(E.getMessage());
 			E.printStackTrace(System.err);
@@ -133,17 +168,17 @@ public class DtlsServer extends Thread{
 			socket.disconnect();
 		}
 	}
-
+	
 	private static boolean isEngineClosed(SSLEngine engine) {
 		return (engine.isOutboundDone() && engine.isInboundDone());
 	}
 
-	/* 
+	/*
 	 * basic SSL Engine
 	 */
-	private SSLEngine createSSLEngine(boolean isClient, ClientAuth auth, boolean withResumption) throws Exception {
+	private SSLEngine createSSLEngine(boolean isClient, DtlsServerConfig config) throws Exception {
 		SSLContext context;
-		if (withResumption && currentContext != null)
+		if (config.isResumptionEnabled() && currentContext != null)
 			context = currentContext;
 		else
 			context = getDTLSContext();
@@ -153,7 +188,7 @@ public class DtlsServer extends Thread{
 		engine.setUseClientMode(isClient);
 
 		if (!isClient) {
-			switch (auth) {
+			switch (config.getAuth()) {
 			case WANTED:
 				engine.setWantClientAuth(true);
 				break;
@@ -164,10 +199,14 @@ public class DtlsServer extends Thread{
 				break;
 			}
 		}
+		
+		SSLParameters params = engine.getSSLParameters();
+		params.setEnableRetransmissions(config.isEnableRetransmission());
+		engine.setSSLParameters(params);
 
 		return engine;
 	}
-	
+
 	public void interrupt() {
 		this.socket.close();
 		this.socket.disconnect();
@@ -177,20 +216,19 @@ public class DtlsServer extends Thread{
 	/*
 	 * Executes a full handshake, may or may not succeed.
 	 * 
-	 * The code is messy, what is important is that we do everything the SSLEngine tells us.
-	 * There are essentially 4 commands an SSLEngine can issue (associated with the HandshakeStatus):
-	 * 1. unwrap - meaning the engine is expecting to receive network data. 
-	 * This data should be received and inputed to the engine.
-	 * 2. wrap - meaning the engine has network data ready.
-	 * This data should be gathered from the engine and sent.
-	 * 3. execute task - meaning the engine requests execution of some tasks.
-	 * We should just execute them.
-	 * 4. finished handshaking - the engine is done with the current handshake.  
-	 * That might mean that the handshake was completed successfully.
-	 * Either that or invalid messages rendered the engine unable to continue with the handshake.
+	 * The code is messy, what is important is that we do everything the SSLEngine
+	 * tells us. There are essentially 4 commands an SSLEngine can issue (associated
+	 * with the HandshakeStatus): 1. unwrap - meaning the engine is expecting to
+	 * receive network data. This data should be received and inputed to the engine.
+	 * 2. wrap - meaning the engine has network data ready. This data should be
+	 * gathered from the engine and sent. 3. execute task - meaning the engine
+	 * requests execution of some tasks. We should just execute them. 4. finished
+	 * handshaking - the engine is done with the current handshake. That might mean
+	 * that the handshake was completed successfully. Either that or invalid
+	 * messages rendered the engine unable to continue with the handshake.
 	 * 
-	 * In the latter case, we expect the engine to be in a closed state, hence we instantiate a new engine.
-	 * If resumption is enabled, we use the same context 
+	 * In the latter case, we expect the engine to be in a closed state, hence we
+	 * instantiate a new engine. If resumption is enabled, we use the same context
 	 * 
 	 * Wrap and unwrap operations return results which also should be considered.
 	 * 
@@ -202,22 +240,22 @@ public class DtlsServer extends Thread{
 		while (!isDone && !isEngineClosed(engine) && !isInterrupted()) {
 			isDone = doHandshakeStepCatchExceptions(engine, socket);
 		}
-		
+
 		if (isDone) {
 			SSLEngineResult.HandshakeStatus hs = engine.getHandshakeStatus();
 			info("Handshake finished, status is " + hs);
-	
+
 			if (engine.getHandshakeSession() != null) {
 				throw new Exception("Handshake finished, but handshake session is not null");
 			}
-	
+
 			SSLSession session = engine.getSession();
 			if (session == null) {
 				throw new Exception("Handshake finished, but session is null");
 			}
 			info("Negotiated protocol is " + session.getProtocol());
 			info("Negotiated cipher suite is " + session.getCipherSuite());
-	
+
 			// handshake status should be NOT_HANDSHAKING
 			//
 			// according to the spec,
@@ -227,19 +265,20 @@ public class DtlsServer extends Thread{
 			}
 		}
 	}
-	
+
 	private boolean doHandshakeStepCatchExceptions(SSLEngine engine, DatagramSocket socket) {
 		try {
 			return doHandshakeStep(engine, socket);
-		} catch(Exception exc) {
+		} catch (Exception exc) {
 			severe("Exception while executing handshake step");
 			exc.printStackTrace();
 			severe("Continuing to flush causative problem");
 			return false;
-		} 
+		}
 	}
 
-	// returns true if the handshake operation is completed/engine is closed, and false otherwise
+	// returns true if the handshake operation is completed/engine is closed, and
+	// false otherwise
 	private boolean doHandshakeStep(SSLEngine engine, DatagramSocket socket) throws Exception {
 		SSLEngineResult.HandshakeStatus hs = engine.getHandshakeStatus();
 		info("handshake status: " + hs);
@@ -315,10 +354,10 @@ public class DtlsServer extends Thread{
 
 		return false;
 	}
-
+	
 	// deliver application data
-	private void sendAppData(SSLEngine engine, DatagramSocket socket, ByteBuffer appData, SocketAddress peerAddr, String side)
-			throws Exception {
+	private void sendAppData(SSLEngine engine, DatagramSocket socket, ByteBuffer appData, SocketAddress peerAddr,
+			String side) throws Exception {
 
 		List<DatagramPacket> packets = produceApplicationPackets(engine, appData, peerAddr);
 		appData.flip();
@@ -339,12 +378,12 @@ public class DtlsServer extends Thread{
 				severe(e.getMessage());
 				return null;
 			}
-			
+
 			info("received a packet of length " + packet.getLength());
 			ByteBuffer netBuffer = ByteBuffer.wrap(buf, 0, packet.getLength());
 			ByteBuffer recBuffer = ByteBuffer.allocate(BUFFER_SIZE);
 			SSLEngineResult rs = engine.unwrap(netBuffer, recBuffer);
-			logResult("unwrap",rs);
+			logResult("unwrap", rs);
 			recBuffer.flip();
 			if (recBuffer.remaining() != 0) {
 				return recBuffer;
@@ -356,7 +395,7 @@ public class DtlsServer extends Thread{
 				return null;
 			}
 		}
-		
+
 		return null;
 	}
 
@@ -407,8 +446,8 @@ public class DtlsServer extends Thread{
 	}
 
 	// produce application packets
-	private List<DatagramPacket> produceApplicationPackets(SSLEngine engine, ByteBuffer source, SocketAddress socketAddr)
-			throws Exception {
+	private List<DatagramPacket> produceApplicationPackets(SSLEngine engine, ByteBuffer source,
+			SocketAddress socketAddr) throws Exception {
 
 		List<DatagramPacket> packets = new ArrayList<>();
 		ByteBuffer appNet = ByteBuffer.allocate(32768);
@@ -416,7 +455,7 @@ public class DtlsServer extends Thread{
 		appNet.flip();
 		logResult("wrap", r);
 		SSLEngineResult.Status rs = r.getStatus();
-		switch(rs) {
+		switch (rs) {
 		case BUFFER_OVERFLOW:
 		case BUFFER_UNDERFLOW:
 			throw new Exception("Unexpected buffer error: " + rs);
@@ -436,7 +475,6 @@ public class DtlsServer extends Thread{
 
 		return packets;
 	}
-	
 
 	private void logResult(String operation, SSLEngineResult result) {
 		info(operation + " result: " + result);
@@ -450,7 +488,7 @@ public class DtlsServer extends Thread{
 	private void runDelegatedTasks(SSLEngine engine) throws Exception {
 		Runnable runnable;
 		while ((runnable = engine.getDelegatedTask()) != null) {
-				runnable.run();
+			runnable.run();
 		}
 
 		SSLEngineResult.HandshakeStatus hs = engine.getHandshakeStatus();
@@ -483,7 +521,7 @@ public class DtlsServer extends Thread{
 
 		sslCtx.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
 		System.err.println(Arrays.asList(sslCtx.getDefaultSSLParameters().getCipherSuites()));
-		
+
 		return sslCtx;
 	}
 

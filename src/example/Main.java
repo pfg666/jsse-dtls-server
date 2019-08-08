@@ -15,7 +15,10 @@ public class Main {
      * Accepts the following arguments:
      * <ul>
      * 	<li> the port on which the server accepts; </li>   
-     * 	<li> whether client authentication is wanted/needed/disabled (optional); </li> 
+     * 	<li> whether client authentication is wanted/needed/disabled (optional); </li>
+     *  <li> mode of operation: basic (single handshake, no application data exchange) 
+     *  or full (loop with handshake and echoing received application data) (optional); </li>
+     *  <li> retransmission enabled-ness (optional); </li> 
      *  <li> session resumption enabled-ness (optional); </li>
      *  <li> the port for the ThreadStarter launching the DTLS server, otherwise 
      *  the server is launched once directly. </li>
@@ -24,35 +27,36 @@ public class Main {
      */
     public static void main(String args[])
     {
-    	boolean defSr = false;
+    	DtlsServerConfig config = new DtlsServerConfig();
     	if (args.length ==0) {
 	        System.out.println(
-	            "USAGE: java Main port [NEEDED|WANTED|DISABLED [resumption_enabled [starter_port]]]");
+	            "USAGE: java Main port [NEEDED|WANTED|DISABLED [operation [retransmission_enabled[ resumption_enabled [starter_port]]]]]");
 	        System.out.println("Default client auth is " + ClientAuth.DISABLED.name());
-	        System.out.println("Default sr enabled-mess is " + defSr);
 	        return;
     	}
     	
     	LinkedList<String> argList = new LinkedList<String>();
     	argList.addAll(Arrays.asList(args));
-    	DtlsServerConfig config = new DtlsServerConfig();
 
         int port = Integer.parseInt(argList.removeFirst());
-        Integer threadStarterPort = null;
         config.setPort(port);
+        Integer threadStarterPort = null;
 
         try {
         	if (!argList.isEmpty()) {
-        		String authString = argList.removeFirst();
-            	config.setAuth(ClientAuth.valueOf(authString));
+            	config.setAuth(ClientAuth.valueOf(argList.removeFirst()));
             }
         	if (!argList.isEmpty()) {
-        		String srString = argList.removeFirst();
-        		config.setEnableResumption(Boolean.valueOf(srString));
+        		config.setOperation(Operation.valueOf(argList.removeFirst()));
         	}
         	if (!argList.isEmpty()) {
-        		String tsString = argList.removeFirst();
-        		threadStarterPort = Integer.valueOf(tsString);
+        		config.setEnableRetransmission(Boolean.valueOf(argList.removeFirst()));
+        	}
+        	if (!argList.isEmpty()) {
+        		config.setEnableResumption(Boolean.valueOf(argList.removeFirst()));
+        	}
+        	if (!argList.isEmpty()) {
+        		threadStarterPort = Integer.valueOf(argList.removeFirst());
         	}
             
         	if (threadStarterPort == null) {
@@ -64,7 +68,7 @@ public class Main {
         	}
         	
         } catch (Exception e) {
-            System.out.println("Got Exception: " +
+            System.out.println("Exception: " +
                                e.getMessage());
             e.printStackTrace();
         } 
