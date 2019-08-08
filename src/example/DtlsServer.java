@@ -368,7 +368,7 @@ public class DtlsServer extends Thread {
 	}
 
 	private ByteBuffer receiveAppData(SSLEngine engine, DatagramSocket socket) throws Exception {
-		while (!isInterrupted()) {
+		while (!isInterrupted() && !engine.isInboundDone()) {
 			byte[] buf = new byte[BUFFER_SIZE];
 			DatagramPacket packet = new DatagramPacket(buf, buf.length);
 			info("waiting for a packet");
@@ -428,6 +428,7 @@ public class DtlsServer extends Thread {
 			case BUFFER_OVERFLOW:
 				throw new Exception("Unexpected buffer error: " + rs);
 			case CLOSED:
+				engine.closeOutbound();
 			case OK:
 				if (oNet.hasRemaining()) {
 					byte[] ba = new byte[oNet.remaining()];
