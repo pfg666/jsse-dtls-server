@@ -101,7 +101,7 @@ public class DtlsServer extends Thread {
 				break;
 			case ONE_ECHO:
 				if (!isInterrupted() && !isEngineClosed(engine)) {
-					if (engine.getHandshakeStatus() != HandshakeStatus.NOT_HANDSHAKING) {
+					if (engine.getHandshakeStatus() == HandshakeStatus.NOT_HANDSHAKING) {
 						appData = receiveAppData(engine, socket);
 		
 						if (appData != null) {
@@ -320,7 +320,7 @@ public class DtlsServer extends Thread {
 			case BUFFER_UNDERFLOW:
 				throw new Exception("Unexpected buffer error: " + rs);
 			case CLOSED:
-				engine.closeInbound();
+//				engine.closeInbound();
 				return true;
 			default:
 				throw new Exception("This branch should not be reachable");
@@ -389,7 +389,7 @@ public class DtlsServer extends Thread {
 				return recBuffer;
 			}
 			if (rs.getStatus() == Status.CLOSED) {
-				engine.closeInbound();
+//				engine.closeInbound();
 			}
 			if (engine.getHandshakeStatus() != HandshakeStatus.NOT_HANDSHAKING) {
 				return null;
@@ -428,7 +428,7 @@ public class DtlsServer extends Thread {
 			case BUFFER_OVERFLOW:
 				throw new Exception("Unexpected buffer error: " + rs);
 			case CLOSED:
-				engine.closeOutbound();
+//				engine.closeOutbound();
 			case OK:
 				if (oNet.hasRemaining()) {
 					byte[] ba = new byte[oNet.remaining()];
