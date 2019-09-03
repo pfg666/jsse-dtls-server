@@ -257,10 +257,12 @@ public class DtlsServer extends Thread {
 			info("Negotiated protocol is " + session.getProtocol());
 			info("Negotiated cipher suite is " + session.getCipherSuite());
 			
-			try {
-				info("Verified peer certificates are " + Arrays.asList(engine.getSession().getPeerCertificates()));
-			} catch(SSLPeerUnverifiedException exception) {
-				info("SSL peer unverified");
+			if (LOG_LEVEL>0) {
+				try {
+					info("Verified peer certificates are " + Arrays.asList(engine.getSession().getPeerCertificates()));
+				} catch(SSLPeerUnverifiedException exception) {
+					info("SSL peer unverified");
+				}
 			}
 
 
@@ -526,10 +528,7 @@ public class DtlsServer extends Thread {
 		tmf.init(ts);
 
 		SSLContext sslCtx = SSLContext.getInstance("DTLS");
-		System.err.println(sslCtx.getProvider());
-
 		sslCtx.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
-		System.err.println(Arrays.asList(sslCtx.getDefaultSSLParameters().getCipherSuites()));
 
 		return sslCtx;
 	}
