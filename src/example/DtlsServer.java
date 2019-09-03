@@ -47,6 +47,7 @@ import javax.net.ssl.SSLEngineResult;
 import javax.net.ssl.SSLEngineResult.HandshakeStatus;
 import javax.net.ssl.SSLEngineResult.Status;
 import javax.net.ssl.SSLParameters;
+import javax.net.ssl.SSLPeerUnverifiedException;
 import javax.net.ssl.SSLSession;
 import javax.net.ssl.TrustManagerFactory;
 
@@ -255,6 +256,13 @@ public class DtlsServer extends Thread {
 			}
 			info("Negotiated protocol is " + session.getProtocol());
 			info("Negotiated cipher suite is " + session.getCipherSuite());
+			
+			try {
+				info("Verified peer certificates are " + Arrays.asList(engine.getSession().getPeerCertificates()));
+			} catch(SSLPeerUnverifiedException exception) {
+				info("SSL peer unverified");
+			}
+
 
 			// handshake status should be NOT_HANDSHAKING
 			//
@@ -545,139 +553,4 @@ public class DtlsServer extends Thread {
 			}
 		}
 	}
-
-//  
-//
-//	/*
-//	 * This is a much cleaner version of a handshake, but needs a bit more time to be made functional. 
-//	 * Adapted from: 
-//	 * https://github.com/alkarn/sslengine.example
-//	 *  
-//	 */
-//
-//	protected boolean doHandshake(SSLEngine engine, DatagramSocket socket) throws IOException {
-//        info("About to do handshake...");
-//
-//        SSLEngineResult result;
-//        HandshakeStatus handshakeStatus;
-//
-//        ByteBuffer myAppData = ByteBuffer.allocate(BUFFER_SIZE);
-//        ByteBuffer peerAppData = ByteBuffer.allocate(BUFFER_SIZE);
-//        ByteBuffer myNetData = ByteBuffer.allocate(BUFFER_SIZE);
-//        ByteBuffer peerNetData = ByteBuffer.allocate(BUFFER_SIZE);
-//        engine.beginHandshake();
-//
-//        handshakeStatus = engine.getHandshakeStatus();
-//        while (handshakeStatus != SSLEngineResult.HandshakeStatus.FINISHED && handshakeStatus != SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING) {
-//            switch (handshakeStatus) {
-//            case NEED_UNWRAP:
-//            case NEED_UNWRAP_AGAIN:
-//            	byte[] buf = new byte[BUFFER_SIZE];
-//            	peerNetData.clear();
-//				DatagramPacket packet = new DatagramPacket(buf, buf.length);
-//				try {
-//					info("waiting for a packet");
-//					receivePacket(packet, socket);
-//					peerNetData.put(packet.getData());
-//					info("received a packet, length = " + packet.getLength());
-//				} catch (SocketTimeoutException ste) {
-//					info("socket timed out, do nothing");
-//					handshakeStatus = engine.getHandshakeStatus();
-//                    break;
-//				}
-//				if (isEngineClosed(engine)) {
-//					return false;
-//				}
-//                peerNetData.flip();
-//                try {
-//                    result = engine.unwrap(peerNetData, peerAppData);
-//                    peerNetData.compact();
-//                    handshakeStatus = result.getHandshakeStatus();
-//                } catch (SSLException sslException) {
-//                    severe("A problem was encountered while processing the data that caused the SSLEngine to abort. Will try to properly close connection...");
-//                    engine.closeOutbound();
-//                    handshakeStatus = engine.getHandshakeStatus();
-//                    break;
-//                }
-//                switch (result.getStatus()) {
-//                case OK:
-//                    break;
-//                case BUFFER_OVERFLOW:
-//                case BUFFER_UNDERFLOW:
-//                	severe("Unhandled cases" + result.getStatus());
-//                    break;
-//                case CLOSED:
-//                    if (engine.isOutboundDone()) {
-//                        return false;
-//                    } else {
-//                        engine.closeOutbound();
-//                        handshakeStatus = engine.getHandshakeStatus();
-//                        break;
-//                    }
-//                default:
-//                    throw new IllegalStateException("Invalid SSL status: " + result.getStatus());
-//                }
-//                break;
-//            case NEED_WRAP:
-//                myNetData.clear();
-//                try {
-//                    result = engine.wrap(myAppData, myNetData);
-//                    handshakeStatus = result.getHandshakeStatus();
-//                } catch (SSLException sslException) {
-//                    severe("A problem was encountered while processing the data that caused the SSLEngine to abort. Will try to properly close connection...");
-//                    engine.closeOutbound();
-//                    handshakeStatus = engine.getHandshakeStatus();
-//                    break;
-//                }
-//                switch (result.getStatus()) {
-//                case OK :
-//                    myNetData.flip();
-//                    sendData(myNetData, socket, peerAddr);
-//                    break;
-//                case BUFFER_OVERFLOW:
-//                case BUFFER_UNDERFLOW:
-//                    throw new SSLException("Unexpected buffer under/overflow cases");
-//                case CLOSED:
-//                    try {
-//                        myNetData.flip();
-//                        sendData(myNetData, socket, peerAddr);
-//                    } catch (Exception e) {
-//                        severe("Failed to send server's CLOSE message due to socket channel's failure.");
-//                        handshakeStatus = engine.getHandshakeStatus();
-//                    }
-//                    break;
-//                default:
-//                    throw new IllegalStateException("Invalid SSL status: " + result.getStatus());
-//                }
-//                break;
-//            case NEED_TASK:
-//                Runnable task;
-//                while ((task = engine.getDelegatedTask()) != null) {
-//                	task.run();
-//                }
-//                handshakeStatus = engine.getHandshakeStatus();
-//                break;
-//            case FINISHED:
-//                break;
-//            case NOT_HANDSHAKING:
-//                break;
-//            default:
-//                throw new IllegalStateException("Invalid SSL status: " + handshakeStatus);
-//            }
-//        }
-//
-//        return true;
-//
-//	}
-//	
-//	
-//	private void sendData(ByteBuffer bufferedData, DatagramSocket socket, SocketAddress address) throws IOException {
-//		while (bufferedData.hasRemaining()) {
-//			byte[] buf = new byte[bufferedData.remaining()];
-//			bufferedData.get(buf);
-//			DatagramPacket packet = createHandshakePacket(buf, address);
-//			socket.send(packet);
-//		}
-//	}
-//	
 }
