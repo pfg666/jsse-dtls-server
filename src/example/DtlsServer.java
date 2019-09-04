@@ -25,22 +25,19 @@
  */
 package example;
 
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
-import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.nio.ByteBuffer;
-import java.security.KeyStore;
+import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLEngineResult;
@@ -49,7 +46,6 @@ import javax.net.ssl.SSLEngineResult.Status;
 import javax.net.ssl.SSLParameters;
 import javax.net.ssl.SSLPeerUnverifiedException;
 import javax.net.ssl.SSLSession;
-import javax.net.ssl.TrustManagerFactory;
 
 /**
  * A basic DTLS echo server built around JSSE's SSLEngine.
@@ -65,25 +61,18 @@ public class DtlsServer extends Thread {
 	private static final int BUFFER_SIZE = 20240;
 	private static final int SOCKET_TIMEOUT = 20000;
 
-	/*
-	 * The following is to set up the keystores.
-	 */
-	private static final String keyFilename = "rsa2048.jks";
-	private static final String keyPasswd = "student";
-	private static final String trustFilename = "rsa2048.jks";
-	private static final String trustPasswd = "student";
-
 	private InetSocketAddress peerAddr;
-	private SSLContext currentContext;
 	private DatagramSocket socket;
 	private DtlsServerConfig config;
+	private SSLContext sslContext;
 
-	public DtlsServer(DtlsServerConfig config) throws SocketException {
+	public DtlsServer(DtlsServerConfig config, SSLContext sslContext) throws GeneralSecurityException, IOException {
 		InetSocketAddress address = new InetSocketAddress(config.getHostname(), config.getPort());
 		socket = new DatagramSocket(address);
 		socket.setSoTimeout(SOCKET_TIMEOUT);
 		socket.setReuseAddress(true);
 		this.config = config;
+		this.sslContext = sslContext;
 	}
 
 	/*
@@ -92,7 +81,7 @@ public class DtlsServer extends Thread {
 	public void run() {
 		try {
 			// create SSLEngine
-			SSLEngine engine = createSSLEngine(false, config);
+			SSLEngine engine = createSSLEngine(sslContext, false, config);
 
 			ByteBuffer appData = null;
 			doFullHandshake(engine, socket);
@@ -136,7 +125,7 @@ public class DtlsServer extends Thread {
 					// otherwise we exit.
 					if (isEngineClosed(engine)) {
 						if (config.isResumptionEnabled()) {
-							engine = createSSLEngine(false, config);
+							engine = createSSLEngine(sslContext, false, config);
 							doFullHandshake(engine, socket);
 						} else
 							break;
@@ -177,14 +166,7 @@ public class DtlsServer extends Thread {
 	/*
 	 * basic SSL Engine
 	 */
-	private SSLEngine createSSLEngine(boolean isClient, DtlsServerConfig config) throws Exception {
-		SSLContext context;
-		if (config.isResumptionEnabled() && currentContext != null)
-			context = currentContext;
-		else
-			context = getDTLSContext();
-		currentContext = context;
-
+	private SSLEngine createSSLEngine(SSLContext context, boolean isClient, DtlsServerConfig config) throws Exception {
 		SSLEngine engine = context.createSSLEngine();
 		engine.setUseClientMode(isClient);
 
@@ -414,8 +396,8 @@ public class DtlsServer extends Thread {
 		socket.receive(packet);
 		InetSocketAddress peerAddress = (InetSocketAddress) packet.getSocketAddress();
 		if (peerAddr == null || !peerAddress.equals(peerAddr)) {
-			info("setting peer address to " + peerAddr);
 			peerAddr = (InetSocketAddress) packet.getSocketAddress();
+			info("setting peer address to " + peerAddr);
 		}
 	}
 
@@ -506,31 +488,6 @@ public class DtlsServer extends Thread {
 		if (hs == SSLEngineResult.HandshakeStatus.NEED_TASK) {
 			throw new Exception("handshake shouldn't need additional tasks");
 		}
-	}
-
-	// get DTSL context
-	private SSLContext getDTLSContext() throws Exception {
-		KeyStore ks = KeyStore.getInstance("JKS");
-		KeyStore ts = KeyStore.getInstance("JKS");
-
-		try (FileInputStream fis = new FileInputStream(keyFilename)) {
-			ks.load(fis, keyPasswd.toCharArray());
-		}
-
-		try (FileInputStream fis = new FileInputStream(trustFilename)) {
-			ts.load(fis, trustPasswd.toCharArray());
-		}
-
-		KeyManagerFactory kmf = KeyManagerFactory.getInstance("SunX509");
-		kmf.init(ks, keyPasswd.toCharArray());
-
-		TrustManagerFactory tmf = TrustManagerFactory.getInstance("SunX509");
-		tmf.init(ts);
-
-		SSLContext sslCtx = SSLContext.getInstance("DTLS");
-		sslCtx.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
-
-		return sslCtx;
 	}
 
 	static void severe(String message) {

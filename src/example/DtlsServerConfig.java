@@ -1,6 +1,7 @@
 package example;
 
 public class DtlsServerConfig {
+	
 	private String hostname;
 	private int port;
 	private ClientAuth auth;

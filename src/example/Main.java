@@ -1,8 +1,15 @@
 package example;
 
-import java.net.SocketException;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.security.GeneralSecurityException;
+import java.security.KeyStore;
 import java.util.Arrays;
 import java.util.LinkedList;
+
+import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManagerFactory;
 
 /* Main file which processes arguments and stuff. 
  */
@@ -59,8 +66,8 @@ public class Main {
         		threadStarterPort = Integer.valueOf(argList.removeFirst());
         	}
             
-        	if (threadStarterPort == null) {
-	        	DtlsServer dtlsHarness = new DtlsServer(config);
+	        if (threadStarterPort == null) {
+	        	DtlsServer dtlsHarness = new DtlsServer(config, getDTLSContext());
 	        	dtlsHarness.run();
         	} else {
         		ThreadStarter ts = new ThreadStarter(() -> newServer(config), threadStarterPort);
@@ -73,13 +80,54 @@ public class Main {
             e.printStackTrace();
         } 
     }
-
+    
 	private static DtlsServer newServer(DtlsServerConfig config) {
 		try {
-			return new DtlsServer(config);
-		} catch (SocketException e) {
+			return new DtlsServer(config, getDTLSContext());
+		} catch (Exception e) {
 			e.printStackTrace();
 			return null;
 		}
 	}
+	
+	/*
+	 * The following is to set up the keystores.
+	 */
+	private static final String keyFilename = "rsa2048.jks";
+	private static final String keyPasswd = "student";
+	private static final String trustFilename = "rsa2048.jks";
+	private static final String trustPasswd = "student";
+	
+	private static SSLContext sslContext;
+	
+	// get DTSL context
+	static SSLContext getDTLSContext() throws GeneralSecurityException, IOException {
+		if (sslContext != null) {
+			return sslContext;
+		}
+		KeyStore ks = KeyStore.getInstance("JKS");
+		KeyStore ts = KeyStore.getInstance("JKS");
+
+		try (FileInputStream fis = new FileInputStream(keyFilename)) {
+			ks.load(fis, keyPasswd.toCharArray());
+		}
+
+		try (FileInputStream fis = new FileInputStream(trustFilename)) {
+			ts.load(fis, trustPasswd.toCharArray());
+		}
+
+		KeyManagerFactory kmf = KeyManagerFactory.getInstance("SunX509");
+		kmf.init(ks, keyPasswd.toCharArray());
+
+		TrustManagerFactory tmf = TrustManagerFactory.getInstance("SunX509");
+		tmf.init(ts);
+
+		SSLContext sslCtx = SSLContext.getInstance("DTLS");
+		sslCtx.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
+		
+		sslContext = sslCtx;
+
+		return sslCtx;
+	}
+	
 }
