@@ -300,23 +300,24 @@ public class DtlsServer extends Thread {
 				iNet = ByteBuffer.allocate(0);
 				iApp = ByteBuffer.allocate(BUFFER_SIZE);
 			}
-
-			SSLEngineResult r = engine.unwrap(iNet, iApp);
-			SSLEngineResult.Status rs = r.getStatus();
-
-			logResult("unwrap", r);
-			switch (rs) {
-			case OK:
-				break;
-			case BUFFER_OVERFLOW:
-			case BUFFER_UNDERFLOW:
-				throw new Exception("Unexpected buffer error: " + rs);
-			case CLOSED:
-//				engine.closeInbound();
-				return true;
-			default:
-				throw new Exception("This branch should not be reachable");
-			}
+			
+			do {
+				SSLEngineResult r = engine.unwrap(iNet, iApp);
+				SSLEngineResult.Status rs = r.getStatus();
+				logResult("unwrap", r);
+				switch (rs) {
+				case OK:
+					continue;
+				case BUFFER_OVERFLOW:
+				case BUFFER_UNDERFLOW:
+					throw new Exception("Unexpected buffer error: " + rs);
+				case CLOSED:
+	//				engine.closeInbound();
+					return true;
+				default:
+					throw new Exception("This branch should not be reachable");
+				}
+			} while(iNet.hasRemaining());
 			break;
 
 		// SSLEngine wants to send network data to the outside world
