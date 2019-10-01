@@ -82,7 +82,7 @@ public class DtlsServer extends Thread {
 		try {
 			// create SSLEngine
 			SSLEngine engine = createSSLEngine(sslContext, false, config);
-
+			
 			ByteBuffer appData = null;
 			doFullHandshake(engine, socket);
 			switch (config.getOperation()) {

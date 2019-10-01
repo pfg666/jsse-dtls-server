@@ -27,8 +27,9 @@ public class Main {
      *  or full (loop with handshake and echoing received application data) (optional); </li>
      *  <li> retransmission enabled-ness (optional); </li> 
      *  <li> session resumption enabled-ness (optional); </li>
-     *  <li> the port for the ThreadStarter launching the DTLS server, otherwise 
-     *  the server is launched once directly. </li>
+     *  <li> the port for the ThreadStarter launching the DTLS server otherwise 
+     *  the server is launched once directly. ; </li>
+     *  <li> whether acknowledgement is enabled/disabled </li>
      * </ul>
      * 
      */
@@ -37,7 +38,7 @@ public class Main {
     	DtlsServerConfig config = new DtlsServerConfig();
     	if (args.length ==0) {
 	        System.out.println(
-	            "USAGE: java Main port [NEEDED|WANTED|DISABLED [operation [retransmission_enabled[ resumption_enabled [starter_port]]]]]");
+	            "USAGE: java Main port [NEEDED|WANTED|DISABLED [operation [retransmission_enabled[ resumption_enabled [starter_port [acknowledge]]]]]]");
 	        System.out.println("Default client auth is " + ClientAuth.DISABLED.name());
 	        return;
     	}
@@ -48,6 +49,7 @@ public class Main {
         int port = Integer.parseInt(argList.removeFirst());
         config.setPort(port);
         Integer threadStarterPort = null;
+        boolean ack = false;
 
         try {
         	if (!argList.isEmpty()) {
@@ -65,12 +67,15 @@ public class Main {
         	if (!argList.isEmpty()) {
         		threadStarterPort = Integer.valueOf(argList.removeFirst());
         	}
+        	if (!argList.isEmpty()) {
+        		ack = Boolean.valueOf(argList.removeFirst());
+        	}
             
 	        if (threadStarterPort == null) {
 	        	DtlsServer dtlsHarness = new DtlsServer(config, getDTLSContext());
 	        	dtlsHarness.run();
         	} else {
-        		ThreadStarter ts = new ThreadStarter(() -> newServer(config), threadStarterPort);
+        		ThreadStarter ts = new ThreadStarter(() -> newServer(config), threadStarterPort, ack);
         		ts.run();
         	}
         	
