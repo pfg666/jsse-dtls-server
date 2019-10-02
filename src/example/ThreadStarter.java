@@ -2,9 +2,11 @@ package example;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -45,7 +47,6 @@ public class ThreadStarter {
 	public void run() throws IOException {
 		System.out.println("Listening at " + srvSocket.getInetAddress() + ":" + srvSocket.getLocalPort());
 		cmdSocket = srvSocket.accept();
-		cmdSocket.setSoTimeout(20000);
 		BufferedReader in = new BufferedReader(new InputStreamReader(cmdSocket.getInputStream()));
 		BufferedWriter out = new BufferedWriter(new OutputStreamWriter(cmdSocket.getOutputStream()));
 		dtlsServerThread = null;
@@ -75,7 +76,11 @@ public class ThreadStarter {
 					close();
 					return;
 				}
-			} catch (IOException e) {
+			} catch (Exception e) {
+				String errorFileName = "ts.error" + (System.currentTimeMillis() / 1000) + ".log";
+				PrintWriter errorPw = new PrintWriter(new FileWriter(errorFileName));
+				e.printStackTrace(errorPw);
+				errorPw.close();
 				close();
 				return;
 			}
