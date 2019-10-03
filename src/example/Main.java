@@ -38,7 +38,7 @@ public class Main {
     	DtlsServerConfig config = new DtlsServerConfig();
     	if (args.length ==0) {
 	        System.out.println(
-	            "USAGE: java Main port [NEEDED|WANTED|DISABLED [operation [retransmission_enabled[ resumption_enabled [starter_port [acknowledge]]]]]]");
+	            "USAGE: java Main ip:port [NEEDED|WANTED|DISABLED [operation [retransmission_enabled[ resumption_enabled [starter_port [acknowledge]]]]]]");
 	        System.out.println("Default client auth is " + ClientAuth.DISABLED.name());
 	        return;
     	}
@@ -46,9 +46,12 @@ public class Main {
     	LinkedList<String> argList = new LinkedList<String>();
     	argList.addAll(Arrays.asList(args));
 
-        int port = Integer.parseInt(argList.removeFirst());
-        config.setPort(port);
-        Integer threadStarterPort = null;
+    	String ipPort = argList.removeFirst();
+    	String[] ipPortArgs = ipPort.split("\\:");
+    	config.setHostname(ipPortArgs[0]);
+    	config.setPort(Integer.valueOf(ipPortArgs[1]));
+    	
+        String threadStarterIpPort = null;
         boolean ack = false;
 
         try {
@@ -65,17 +68,18 @@ public class Main {
         		config.setEnableResumption(Boolean.valueOf(argList.removeFirst()));
         	}
         	if (!argList.isEmpty()) {
-        		threadStarterPort = Integer.valueOf(argList.removeFirst());
+        		threadStarterIpPort = argList.removeFirst();
         	}
         	if (!argList.isEmpty()) {
         		ack = Boolean.valueOf(argList.removeFirst());
         	}
+        	sslContext = getDTLSContext();
             
-	        if (threadStarterPort == null) {
-	        	DtlsServer dtlsHarness = new DtlsServer(config, getDTLSContext());
+	        if (threadStarterIpPort == null) {
+	        	DtlsServer dtlsHarness = new DtlsServer(config, sslContext);
 	        	dtlsHarness.run();
         	} else {
-        		ThreadStarter ts = new ThreadStarter(() -> newServer(config), threadStarterPort, ack);
+        		ThreadStarter ts = new ThreadStarter(() -> newServer(config, sslContext), threadStarterIpPort, ack);
         		ts.run();
         	}
         	
@@ -86,12 +90,12 @@ public class Main {
         } 
     }
     
-	private static DtlsServer newServer(DtlsServerConfig config) {
+	private static DtlsServer newServer(DtlsServerConfig config, SSLContext sslContext) {
 		try {
-			return new DtlsServer(config, getDTLSContext());
+			return new DtlsServer(config, sslContext);
 		} catch (Exception e) {
 			e.printStackTrace();
-			return null;
+			throw new RuntimeException(e);
 		}
 	}
 	
@@ -107,9 +111,6 @@ public class Main {
 	
 	// get DTSL context
 	static SSLContext getDTLSContext() throws GeneralSecurityException, IOException {
-		if (sslContext != null) {
-			return sslContext;
-		}
 		KeyStore ks = KeyStore.getInstance("JKS");
 		KeyStore ts = KeyStore.getInstance("JKS");
 
@@ -129,8 +130,6 @@ public class Main {
 
 		SSLContext sslCtx = SSLContext.getInstance("DTLS");
 		sslCtx.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
-		
-		sslContext = sslCtx;
 
 		return sslCtx;
 	}

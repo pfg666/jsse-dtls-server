@@ -21,10 +21,13 @@ public class ThreadStarter {
 	private ServerSocket srvSocket;
 	private Thread dtlsServerThread;
 	private Socket cmdSocket;
+	private Integer port;
 	private boolean ack;
 
-	public ThreadStarter(Supplier<Thread> supplier, Integer ipPort, boolean ack) throws IOException {
-		InetSocketAddress address = new InetSocketAddress("localhost", ipPort);
+	public ThreadStarter(Supplier<Thread> supplier, String ipPort, boolean ack) throws IOException {
+		String[] args = ipPort.split("\\:");
+		port = Integer.valueOf(args[1]);
+		InetSocketAddress address = new InetSocketAddress(args[0], Integer.valueOf(args[1]));
 		this.supplier = supplier;
 		srvSocket = new ServerSocket();
 		srvSocket.setReuseAddress(true);
@@ -57,8 +60,14 @@ public class ThreadStarter {
 				if (cmd != null) {
 					switch(cmd.trim()) {
 					case "reset":
+					case "":
 						if (dtlsServerThread != null) {
 							dtlsServerThread.interrupt();
+							// waiting for the thread to die,
+							// otherwise we might get address already in use problems
+							while (dtlsServerThread.isAlive()) {
+								Thread.sleep(1);
+							}
 						}
 						dtlsServerThread = supplier.get();
 						dtlsServerThread.start();
@@ -77,7 +86,7 @@ public class ThreadStarter {
 					return;
 				}
 			} catch (Exception e) {
-				String errorFileName = "ts.error" + (System.currentTimeMillis() / 1000) + ".log";
+				String errorFileName = "ts.error." + port + ".log";
 				PrintWriter errorPw = new PrintWriter(new FileWriter(errorFileName));
 				e.printStackTrace(errorPw);
 				errorPw.close();

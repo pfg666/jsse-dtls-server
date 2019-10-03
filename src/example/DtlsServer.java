@@ -71,10 +71,9 @@ public class DtlsServer extends Thread {
 		socket = new DatagramSocket(address);
 		socket.setSoTimeout(SOCKET_TIMEOUT);
 		socket.setReuseAddress(true);
-		this.config = config;
+		this.config = config;		
 		this.sslContext = sslContext;
 	}
-
 	/*
 	 * A mock DTLS echo server which uses SSLEngine.
 	 */
@@ -192,7 +191,6 @@ public class DtlsServer extends Thread {
 
 	public void interrupt() {
 		this.socket.close();
-		this.socket.disconnect();
 		super.interrupt();
 	}
 
