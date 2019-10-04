@@ -60,6 +60,7 @@ public class ThreadStarter {
 					switch(cmd.trim()) {
 					case "reset":
 					case "":
+						
 						if (dtlsServerThread != null) {
 							dtlsServerThread.interrupt();
 							// waiting for the thread to die,
@@ -70,6 +71,12 @@ public class ThreadStarter {
 						}
 						dtlsServerThread = supplier.get();
 						dtlsServerThread.start();
+						
+						// waiting for the server to start running
+						while(!dtlsServerThread.isRunning()) {
+							Thread.sleep(1);
+						}
+						
 						out.write(String.valueOf(dtlsServerThread.getPort()));
 						out.newLine();
 						out.flush();

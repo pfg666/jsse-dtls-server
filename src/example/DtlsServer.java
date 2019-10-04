@@ -37,6 +37,7 @@ import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
@@ -65,6 +66,7 @@ public class DtlsServer extends Thread {
 	private DatagramSocket socket;
 	private DtlsServerConfig config;
 	private SSLContext sslContext;
+	private AtomicBoolean running;
 
 	public DtlsServer(DtlsServerConfig config, SSLContext sslContext) throws GeneralSecurityException, IOException {
 		InetSocketAddress address = new InetSocketAddress(config.getHostname(), config.getPort());
@@ -73,6 +75,7 @@ public class DtlsServer extends Thread {
 		socket.setReuseAddress(true);
 		this.config = config;		
 		this.sslContext = sslContext;
+		this.running = new AtomicBoolean(false);
 	}
 	
 	/*
@@ -82,7 +85,7 @@ public class DtlsServer extends Thread {
 		try {
 			// create SSLEngine
 			SSLEngine engine = createSSLEngine(sslContext, false, config);
-			
+			running.set(true);
 			ByteBuffer appData = null;
 			doFullHandshake(engine, socket);
 			switch (config.getOperation()) {
@@ -156,7 +159,12 @@ public class DtlsServer extends Thread {
 			}
 			socket.close();
 			socket.disconnect();
+			running.set(false);
 		}
+	}
+	
+	public boolean isRunning() {
+		return running.get();
 	}
 	
 	private static boolean isEngineClosed(SSLEngine engine) {
@@ -198,7 +206,7 @@ public class DtlsServer extends Thread {
 		this.socket.close();
 		super.interrupt();
 	}
-
+	
 	/*
 	 * Executes a full handshake, may or may not succeed.
 	 * 
