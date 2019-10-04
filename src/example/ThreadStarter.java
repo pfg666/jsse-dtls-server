@@ -15,16 +15,16 @@ import java.util.function.Supplier;
 /**
  * We use this class to avoid having to restart the vm (which is can be a slow process). 
  */
+// This could be made more general but...
 public class ThreadStarter {
 	
-	private Supplier<Thread> supplier;
+	private Supplier<DtlsServer> supplier;
 	private ServerSocket srvSocket;
-	private Thread dtlsServerThread;
+	private DtlsServer dtlsServerThread;
 	private Socket cmdSocket;
 	private Integer port;
-	private boolean ack;
 
-	public ThreadStarter(Supplier<Thread> supplier, String ipPort, boolean ack) throws IOException {
+	public ThreadStarter(Supplier<DtlsServer> supplier, String ipPort) throws IOException {
 		String[] args = ipPort.split("\\:");
 		port = Integer.valueOf(args[1]);
 		InetSocketAddress address = new InetSocketAddress(args[0], Integer.valueOf(args[1]));
@@ -33,7 +33,6 @@ public class ThreadStarter {
 		srvSocket.setReuseAddress(true);
 		srvSocket.setSoTimeout(20000);
 		srvSocket.bind(address);
-		this.ack = ack;
 		
 		Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
 			@Override
@@ -71,11 +70,9 @@ public class ThreadStarter {
 						}
 						dtlsServerThread = supplier.get();
 						dtlsServerThread.start();
-						if (ack) {
-							out.write("ack");
-							out.newLine();
-							out.flush();
-						}
+						out.write(String.valueOf(dtlsServerThread.getPort()));
+						out.newLine();
+						out.flush();
 						break;
 					case "exit":
 						close();

@@ -29,7 +29,6 @@ public class Main {
      *  <li> session resumption enabled-ness (optional); </li>
      *  <li> the port for the ThreadStarter launching the DTLS server otherwise 
      *  the server is launched once directly. ; </li>
-     *  <li> whether acknowledgement is enabled/disabled </li>
      * </ul>
      * 
      */
@@ -52,7 +51,6 @@ public class Main {
     	config.setPort(Integer.valueOf(ipPortArgs[1]));
     	
         String threadStarterIpPort = null;
-        boolean ack = false;
 
         try {
         	if (!argList.isEmpty()) {
@@ -70,16 +68,16 @@ public class Main {
         	if (!argList.isEmpty()) {
         		threadStarterIpPort = argList.removeFirst();
         	}
-        	if (!argList.isEmpty()) {
-        		ack = Boolean.valueOf(argList.removeFirst());
-        	}
+
         	sslContext = getDTLSContext();
             
 	        if (threadStarterIpPort == null) {
 	        	DtlsServer dtlsHarness = new DtlsServer(config, sslContext);
 	        	dtlsHarness.run();
         	} else {
-        		ThreadStarter ts = new ThreadStarter(() -> newServer(config, sslContext), threadStarterIpPort, ack);
+        		// the server port is dynamically alocated in this case
+        		config.setPort(0);
+        		ThreadStarter ts = new ThreadStarter(() -> newServer(config, sslContext), threadStarterIpPort);
         		ts.run();
         	}
         	

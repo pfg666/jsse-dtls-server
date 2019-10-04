@@ -59,7 +59,7 @@ public class DtlsServer extends Thread {
 			LOG_LEVEL = Integer.valueOf(level);
 	}
 	private static final int BUFFER_SIZE = 20240;
-	private static final int SOCKET_TIMEOUT = 20000;
+	static final int SOCKET_TIMEOUT = 20000;
 
 	private InetSocketAddress peerAddr;
 	private DatagramSocket socket;
@@ -74,6 +74,7 @@ public class DtlsServer extends Thread {
 		this.config = config;		
 		this.sslContext = sslContext;
 	}
+	
 	/*
 	 * A mock DTLS echo server which uses SSLEngine.
 	 */
@@ -187,6 +188,10 @@ public class DtlsServer extends Thread {
 		engine.setSSLParameters(params);
 
 		return engine;
+	}
+	
+	public Integer getPort() {
+		return this.socket.getLocalPort();
 	}
 
 	public void interrupt() {
